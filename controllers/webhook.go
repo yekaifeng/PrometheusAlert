@@ -4,7 +4,6 @@ import (
 	"PrometheusAlert/models"
 	"bytes"
 	"crypto/tls"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
