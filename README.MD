@@ -227,24 +227,109 @@ feiyu563/prometheus-alert:latest
 
 --------------------------------------
 
-项目源码
+项目源码扩展
 
 --------------------------------------
 
- - [【GitHub】: PrometheusAlert](https://github.com/feiyu563/PrometheusAlert)
- - [【码云】: PrometheusAlert](https://gitee.com/feiyu563/PrometheusAlert)
+感谢feiyu563 的开源分享精神，我在他的项目的基础上，作出以下改进:
+
+  - 增加支持远程webhook http basic auth
+
 
 --------------------------------------
 
-加入PrometheusAlert微信交流群
+新功能测试
 
 --------------------------------------
 
+```
+vi /etc/prometheusalert-center/app.conf
+tota_user=test
+tota_password=alert_test
+mkdir -p /var/lib/prometheusalert
+sudo podman run -d -p 8080:8080 -v /etc/prometheusalert-center:/app/conf -v /var/lib/prometheusalert:/app/db --name prometheusalert-center kennethye/prometheus-alert:6.0
+```
 
-![me](doc/images/wx.png)
+--------------------------------------
 
----
+配置测试模板, 名称为 prometheus-webhook
 
-Email: 244217140@qq.com
+--------------------------------------
 
-----
+```
+[
+{{ $length := len .alerts }}
+{{range $index, $var :=.alerts}}
+{
+{{if eq $var.status "firing"}}
+"Summary": "触发告警:{{$var.labels.alertname}}",
+{{else}}
+"Summary": "解除告警:{{$var.labels.alertname}}",
+{{end}}
+"Notes": "详细情况:{{$var.annotations.description}}\n 集群名:{{$var.labels.cluster_name}}\n 环境:{{$var.labels.environment}}\n 节点:{{$var.labels.node}}\n 服务名:{{$var.labels.service}}",
+"IP": "{{$var.labels.instance}}",
+"Source": "Container Cloud",
+"Alert_type": "cloud",
+"Event_id": "{{$var.labels.alertname}}-{{$var.startsAt}}",
+"Assignee": "",
+{{if eq $var.labels.level "1"}}
+"Priority": "Level 1"
+{{else}}{{if eq $var.labels.level "2"}} 
+"Priority": "Level 2"
+{{else}}{{if eq $var.labels.level "3"}} 
+"Priority": "Level 3"
+{{else}}
+"Priority": "Level 4"
+{{end}}
+{{end}}
+{{end}}
+{{if eq $index $length }}
+}
+{{else}}
+},
+{{end}}
+{{end}}
+]
+```
+
+--------------------------------------
+
+配置AlertManager 发送告警给webhook
+
+--------------------------------------
+
+```
+global:
+  resolve_timeout: 5m
+receivers:
+  - name: Default
+  - name: Watchdog
+  - name: Critical
+  - name: 'null'
+  - name: webhook
+    webhook_configs:
+      - url: >-
+          http://192.168.0.100:8080/prometheusalert?type=webhook&tpl=prometheus-webhook&webhookurl=http://192.168.0.100:8093
+route:
+  group_by:
+    - namespace
+  group_interval: 5m
+  group_wait: 30s
+  receiver: webhook
+  repeat_interval: 12h
+  routes:
+    - matchers:
+        - alertname = Watchdog
+      receiver: Watchdog
+    - matchers:
+        - alertname = InfoInhibitor
+      receiver: 'null'
+    - matchers:
+        - severity = critical
+      receiver: Critical
+    - receiver: webhook
+      match:
+        name: webhook
+```
+
+--------------------------------------
